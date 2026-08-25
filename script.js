@@ -1,9 +1,10 @@
 const mediaInput = document.getElementById('mediaInput');
 const editorSection = document.getElementById('editorSection');
 const canvas = document.getElementById('canvasPreview');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const videoElement = document.getElementById('videoElement');
 
+const qualitySelect = document.getElementById('qualitySelect');
 const sharpnessInput = document.getElementById('sharpness');
 const contrastInput = document.getElementById('contrast');
 const brightnessInput = document.getElementById('brightness');
@@ -14,7 +15,7 @@ let currentFileType = '';
 let loadedImage = new Image();
 let animFrameId = null;
 
-// عند اختيار ملف
+// استقبال الملف عند رفعه
 mediaInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -29,9 +30,8 @@ mediaInput.addEventListener('change', (e) => {
         currentFileType = 'image';
         loadedImage = new Image();
         loadedImage.onload = () => {
-            canvas.width = loadedImage.width;
-            canvas.height = loadedImage.height;
-            render();
+            updateCanvasDimensions();
+            renderImage();
         };
         loadedImage.src = fileURL;
     } else if (file.type.startsWith('video/')) {
@@ -41,13 +41,27 @@ mediaInput.addEventListener('change', (e) => {
         videoElement.muted = true;
 
         videoElement.onloadedmetadata = () => {
-            canvas.width = videoElement.videoWidth;
-            canvas.height = videoElement.videoHeight;
+            updateCanvasDimensions();
             videoElement.play();
             renderVideo();
         };
     }
 });
+
+// تحديث أبعاد الـ Canvas ديناميكياً حسب الجودة المختارة
+function updateCanvasDimensions() {
+    const targetHeight = parseInt(qualitySelect.value);
+    
+    if (currentFileType === 'image') {
+        const aspectRatio = loadedImage.width / loadedImage.height;
+        canvas.height = targetHeight;
+        canvas.width = Math.round(targetHeight * aspectRatio);
+    } else if (currentFileType === 'video') {
+        const aspectRatio = videoElement.videoWidth / videoElement.videoHeight;
+        canvas.height = targetHeight;
+        canvas.width = Math.round(targetHeight * aspectRatio);
+    }
+}
 
 function updateLabels() {
     document.getElementById('sharpVal').innerText = sharpnessInput.value + '%';
@@ -56,36 +70,39 @@ function updateLabels() {
     document.getElementById('saturateVal').innerText = saturationInput.value + '%';
 }
 
-// رسم المعالجة للصور
-function render() {
+// رسم وتحسين الصورة
+function renderImage() {
     if (currentFileType !== 'image') return;
     updateLabels();
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
-    // تطبيق الفلاتر والحدة بالـ CSS Filter المباشر (سريع وبدون أخطاء كراش)
-    const sharp = parseInt(sharpnessInput.value);
     const bright = brightnessInput.value;
     const contrast = contrastInput.value;
     const saturate = saturationInput.value;
+    const sharp = parseInt(sharpnessInput.value);
 
-    // استخدام خوارزمية الفلترة المدمجة بالمتصفح لمنع ثقل الجهاز
     ctx.filter = `
         brightness(${bright}%) 
         contrast(${contrast}%) 
-        saturate(${saturate}%) 
-        drop-shadow(0 0 ${sharp / 50}px rgba(0,0,0,0.5))
+        saturate(${saturate}%)
+        contrast(${100 + sharp / 4}%)
     `;
-    
+
     ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
 }
 
-// رسم المعالجة للفيديوهات
+// رسم وتحسين الفيديو
 function renderVideo() {
     if (currentFileType === 'video' && !videoElement.paused && !videoElement.ended) {
         updateLabels();
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
         ctx.filter = `
             brightness(${brightnessInput.value}%) 
             contrast(${contrastInput.value}%) 
@@ -97,27 +114,35 @@ function renderVideo() {
     }
 }
 
-// استماع للتحريك في السلايدرز
+// تحديث الدقة عند اختيار خيار جديد من القائمة
+qualitySelect.addEventListener('change', () => {
+    updateCanvasDimensions();
+    if (currentFileType === 'image') renderImage();
+});
+
+// تحديث الصورة عند تحريك أشرطة التحكم
 [sharpnessInput, contrastInput, brightnessInput, saturationInput].forEach(input => {
     input.addEventListener('input', () => {
-        if (currentFileType === 'image') render();
+        if (currentFileType === 'image') renderImage();
     });
 });
 
-// إعادة الضبط
+// إعادة الضبط للإعدادات التلقائية
 document.getElementById('resetBtn').addEventListener('click', () => {
-    sharpnessInput.value = 50;
-    contrastInput.value = 110;
+    qualitySelect.value = "1080";
+    sharpnessInput.value = 60;
+    contrastInput.value = 120;
     brightnessInput.value = 105;
-    saturationInput.value = 120;
-    if (currentFileType === 'image') render();
+    saturationInput.value = 125;
+    updateCanvasDimensions();
+    if (currentFileType === 'image') renderImage();
 });
 
-// حفظ الصورة
+// حفظ الملف بالتعديل والدقة المطلوبة
 downloadBtn.addEventListener('click', () => {
     if (currentFileType === 'image') {
         const link = document.createElement('a');
-        link.download = 'Enhanced_Image.png';
+        link.download = `Enhanced_${qualitySelect.value}p_${canvas.width}x${canvas.height}.png`;
         link.href = canvas.toDataURL('image/png', 1.0);
         link.click();
     } else {
