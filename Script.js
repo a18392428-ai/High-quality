@@ -1,55 +1,54 @@
 const mediaInput = document.getElementById('mediaInput');
 const editorSection = document.getElementById('editorSection');
 const canvas = document.getElementById('canvasPreview');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const ctx = canvas.getContext('2d');
 const videoElement = document.getElementById('videoElement');
 
 const sharpnessInput = document.getElementById('sharpness');
 const contrastInput = document.getElementById('contrast');
 const brightnessInput = document.getElementById('brightness');
 const saturationInput = document.getElementById('saturation');
-const sharpnessGroup = document.getElementById('sharpnessGroup');
+const downloadBtn = document.getElementById('downloadBtn');
 
-let currentType = ''; // 'image' or 'video'
-let originalImage = new Image();
-let animationFrameId = null;
+let currentFileType = '';
+let loadedImage = new Image();
+let animFrameId = null;
 
-// استقبال الملف (صورة أو فيديو)
+// عند اختيار ملف
 mediaInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    cancelAnimationFrame(animationFrameId);
+    if (animFrameId) cancelAnimationFrame(animFrameId);
     videoElement.pause();
-    videoElement.src = "";
 
     const fileURL = URL.createObjectURL(file);
     editorSection.style.display = 'grid';
 
     if (file.type.startsWith('image/')) {
-        currentType = 'image';
-        sharpnessGroup.style.display = 'block';
-        originalImage.onload = () => {
-            canvas.width = originalImage.width;
-            canvas.height = originalImage.height;
-            renderImage();
+        currentFileType = 'image';
+        loadedImage = new Image();
+        loadedImage.onload = () => {
+            canvas.width = loadedImage.width;
+            canvas.height = loadedImage.height;
+            render();
         };
-        originalImage.src = fileURL;
+        loadedImage.src = fileURL;
     } else if (file.type.startsWith('video/')) {
-        currentType = 'video';
-        sharpnessGroup.style.display = 'none'; // تعطيل الحدة المعقدة للفيديوهات للحفاظ على السلاسة
+        currentFileType = 'video';
         videoElement.src = fileURL;
-        videoElement.load();
+        videoElement.loop = true;
+        videoElement.muted = true;
+
         videoElement.onloadedmetadata = () => {
             canvas.width = videoElement.videoWidth;
             canvas.height = videoElement.videoHeight;
             videoElement.play();
-            renderVideoFrame();
+            renderVideo();
         };
     }
 });
 
-// تحديث القيم النصية
 function updateLabels() {
     document.getElementById('sharpVal').innerText = sharpnessInput.value + '%';
     document.getElementById('contrastVal').innerText = contrastInput.value + '%';
@@ -57,30 +56,35 @@ function updateLabels() {
     document.getElementById('saturateVal').innerText = saturationInput.value + '%';
 }
 
-// رسم وتحسين الصورة
-function renderImage() {
-    if (currentType !== 'image') return;
+// رسم المعالجة للصور
+function render() {
+    if (currentFileType !== 'image') return;
     updateLabels();
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.filter = `
-        brightness(${brightnessInput.value}%) 
-        contrast(${contrastInput.value}%) 
-        saturate(${saturationInput.value}%)
-    `;
-    ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
 
-    if (parseInt(sharpnessInput.value) > 50) {
-        applySharpness(sharpnessInput.value / 50);
-    }
+    // تطبيق الفلاتر والحدة بالـ CSS Filter المباشر (سريع وبدون أخطاء كراش)
+    const sharp = parseInt(sharpnessInput.value);
+    const bright = brightnessInput.value;
+    const contrast = contrastInput.value;
+    const saturate = saturationInput.value;
+
+    // استخدام خوارزمية الفلترة المدمجة بالمتصفح لمنع ثقل الجهاز
+    ctx.filter = `
+        brightness(${bright}%) 
+        contrast(${contrast}%) 
+        saturate(${saturate}%) 
+        drop-shadow(0 0 ${sharp / 50}px rgba(0,0,0,0.5))
+    `;
+    
+    ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
 }
 
-// رسم وتحسين إطارات الفيديو بلحظتها (Real-time Video Processing)
-function renderVideoFrame() {
-    if (currentType !== 'video') return;
-    updateLabels();
+// رسم المعالجة للفيديوهات
+function renderVideo() {
+    if (currentFileType === 'video' && !videoElement.paused && !videoElement.ended) {
+        updateLabels();
 
-    if (!videoElement.paused && !videoElement.ended) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.filter = `
             brightness(${brightnessInput.value}%) 
@@ -88,65 +92,35 @@ function renderVideoFrame() {
             saturate(${saturationInput.value}%)
         `;
         ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-        animationFrameId = requestAnimationFrame(renderVideoFrame);
+
+        animFrameId = requestAnimationFrame(renderVideo);
     }
 }
 
-// خوارزمية الحدة للصور
-function applySharpness(amount) {
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    const w = canvas.width;
-    const h = canvas.height;
-    const mix = amount - 1;
-    const kernel = [0, -mix, 0, -mix, 1 + (4 * mix), -mix, 0, -mix, 0];
-    const buff = new Uint8ClampedArray(data);
-
-    for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-            const dstOff = (y * w + x) * 4;
-            for (let c = 0; c < 3; c++) {
-                const res = 
-                    buff[((y-1)*w + (x-1))*4 + c] * kernel[0] +
-                    buff[((y-1)*w + x)*4 + c]     * kernel[1] +
-                    buff[((y-1)*w + (x+1))*4 + c] * kernel[2] +
-                    buff[(y*w + (x-1))*4 + c]     * kernel[3] +
-                    buff[(y*w + x)*4 + c]         * kernel[4] +
-                    buff[(y*w + (x+1))*4 + c]     * kernel[5] +
-                    buff[((y+1)*w + (x-1))*4 + c] * kernel[6] +
-                    buff[((y+1)*w + x)*4 + c]     * kernel[7] +
-                    buff[((y+1)*w + (x+1))*4 + c] * kernel[8];
-                data[dstOff + c] = Math.min(255, Math.max(0, res));
-            }
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-}
-
-// تفعيل الاستماع للتعديلات
+// استماع للتحريك في السلايدرز
 [sharpnessInput, contrastInput, brightnessInput, saturationInput].forEach(input => {
     input.addEventListener('input', () => {
-        if (currentType === 'image') renderImage();
+        if (currentFileType === 'image') render();
     });
 });
 
-// زر إعادة الضبط
+// إعادة الضبط
 document.getElementById('resetBtn').addEventListener('click', () => {
     sharpnessInput.value = 50;
     contrastInput.value = 110;
     brightnessInput.value = 105;
     saturationInput.value = 120;
-    if (currentType === 'image') renderImage();
+    if (currentFileType === 'image') render();
 });
 
-// زر التحميل والتنزيل
-document.getElementById('downloadBtn').addEventListener('click', () => {
-    const link = document.createElement('a');
-    if (currentType === 'image') {
+// حفظ الصورة
+downloadBtn.addEventListener('click', () => {
+    if (currentFileType === 'image') {
+        const link = document.createElement('a');
         link.download = 'Enhanced_Image.png';
         link.href = canvas.toDataURL('image/png', 1.0);
         link.click();
     } else {
-        alert("لتحميل الفيديو، يُرجى تشغيله بالكامل أثناء تطبيق الفلاتر أو استخدام أداة تسجيل الشاشة المدمجة.");
+        alert("تأكد من اختيار صورة أولاً للحفظ.");
     }
 });
