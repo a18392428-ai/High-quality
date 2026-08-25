@@ -1,7 +1,7 @@
 const mediaInput = document.getElementById('mediaInput');
 const editorSection = document.getElementById('editorSection');
 const canvas = document.getElementById('canvasPreview');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const ctx = canvas.getContext('2d');
 const videoElement = document.getElementById('videoElement');
 
 const qualitySelect = document.getElementById('qualitySelect');
@@ -15,7 +15,6 @@ let currentFileType = '';
 let loadedImage = new Image();
 let animFrameId = null;
 
-// استقبال الملف
 mediaInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -30,6 +29,12 @@ mediaInput.addEventListener('change', (e) => {
         currentFileType = 'image';
         loadedImage = new Image();
         loadedImage.onload = () => {
+            // ضبط القيم التلقائية لمعايير متوازنة لا تحرق الألوان
+            sharpnessInput.value = 20;
+            contrastInput.value = 105;
+            brightnessInput.value = 100;
+            saturationInput.value = 105;
+            
             updateCanvasDimensions();
             renderImage();
         };
@@ -48,10 +53,8 @@ mediaInput.addEventListener('change', (e) => {
     }
 });
 
-// تغيير الأبعاد بناءً على الجودة المختارة من القائمة
 function updateCanvasDimensions() {
     const targetHeight = parseInt(qualitySelect.value);
-    
     if (currentFileType === 'image') {
         const aspectRatio = loadedImage.width / loadedImage.height;
         canvas.height = targetHeight;
@@ -70,31 +73,30 @@ function updateLabels() {
     document.getElementById('saturateVal').innerText = saturationInput.value + '%';
 }
 
-// رسم الصور بالدقة المختارة
 function renderImage() {
     if (currentFileType !== 'image') return;
     updateLabels();
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // تفعيل تنعيم الصورة عند التكبير للـ 4K
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
     const bright = brightnessInput.value;
     const contrast = contrastInput.value;
     const saturate = saturationInput.value;
-    const sharp = parseInt(sharpnessInput.value);
 
+    // تطبيق قيم طبيعية بدون تشويه
     ctx.filter = `
         brightness(${bright}%) 
         contrast(${contrast}%) 
         saturate(${saturate}%)
-        contrast(${100 + sharp / 4}%)
     `;
 
     ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
 }
 
-// رسم الفيديوهات
 function renderVideo() {
     if (currentFileType === 'video' && !videoElement.paused && !videoElement.ended) {
         updateLabels();
@@ -114,38 +116,34 @@ function renderVideo() {
     }
 }
 
-// الاستماع لتغيير دقة الجودة من القائمة
 qualitySelect.addEventListener('change', () => {
     updateCanvasDimensions();
     if (currentFileType === 'image') renderImage();
 });
 
-// الاستماع لأشرطة التعديل
 [sharpnessInput, contrastInput, brightnessInput, saturationInput].forEach(input => {
     input.addEventListener('input', () => {
         if (currentFileType === 'image') renderImage();
     });
 });
 
-// إعادة الضبط
 document.getElementById('resetBtn').addEventListener('click', () => {
     qualitySelect.value = "1080";
-    sharpnessInput.value = 60;
-    contrastInput.value = 120;
-    brightnessInput.value = 105;
-    saturationInput.value = 125;
+    sharpnessInput.value = 20;
+    contrastInput.value = 105;
+    brightnessInput.value = 100;
+    saturationInput.value = 105;
     updateCanvasDimensions();
     if (currentFileType === 'image') renderImage();
 });
 
-// التنزيل بالدقة والأبعاد المختارة
 downloadBtn.addEventListener('click', () => {
     if (currentFileType === 'image') {
         const link = document.createElement('a');
-        link.download = `Enhanced_${qualitySelect.value}p_${canvas.width}x${canvas.height}.png`;
+        link.download = `Enhanced_${qualitySelect.value}p.png`;
         link.href = canvas.toDataURL('image/png', 1.0);
         link.click();
     } else {
-        alert("تأكد من اختيار صورة للتنزيل.");
+        alert("تأكد من اختيار صورة أولاً.");
     }
 });
