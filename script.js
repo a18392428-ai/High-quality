@@ -1,7 +1,7 @@
 const mediaInput = document.getElementById('mediaInput');
 const editorSection = document.getElementById('editorSection');
 const canvas = document.getElementById('canvasPreview');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const videoElement = document.getElementById('videoElement');
 
 const qualitySelect = document.getElementById('qualitySelect');
@@ -29,14 +29,14 @@ mediaInput.addEventListener('change', (e) => {
         currentFileType = 'image';
         loadedImage = new Image();
         loadedImage.onload = () => {
-            // ضبط القيم التلقائية لمعايير متوازنة لا تحرق الألوان
-            sharpnessInput.value = 20;
-            contrastInput.value = 105;
-            brightnessInput.value = 100;
-            saturationInput.value = 105;
+            // إعدادات افتراضية مخصصة للتحسين الذكي لـ 4K
+            sharpnessInput.value = 35;
+            contrastInput.value = 108;
+            brightnessInput.value = 102;
+            saturationInput.value = 104;
             
             updateCanvasDimensions();
-            renderImage();
+            renderImageWithAIEnhance();
         };
         loadedImage.src = fileURL;
     } else if (file.type.startsWith('video/')) {
@@ -73,13 +73,47 @@ function updateLabels() {
     document.getElementById('saturateVal').innerText = saturationInput.value + '%';
 }
 
-function renderImage() {
+// محاكاة تحسين الذكاء الاصطناعي لاستخراج الحواف والتفاصيل الدقيقة (Unsharp Masking Algorithm)
+function applyAIEnhancements(amount) {
+    if (amount <= 0) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const copyData = new Uint8ClampedArray(data);
+
+    // مصفوفة تحديد وتوضيح الحواف والتفاصيل (Convolution Matrix)
+    const factor = (amount / 100) * 1.5;
+    
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+
+            for (let c = 0; c < 3; c++) { // ألوان R, G, B
+                const center = copyData[idx + c];
+                const top    = copyData[((y - 1) * width + x) * 4 + c];
+                const bottom = copyData[((y + 1) * width + x) * 4 + c];
+                const left   = copyData[(y * width + (x - 1)) * 4 + c];
+                const right  = copyData[(y * width + (x + 1)) * 4 + c];
+
+                // حساب التباين العالي لإبراز تفاصيل الجلد والحواف
+                let sharpValue = center + factor * (5 * center - top - bottom - left - right);
+                data[idx + c] = Math.min(255, Math.max(0, sharpValue));
+            }
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function renderImageWithAIEnhance() {
     if (currentFileType !== 'image') return;
     updateLabels();
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // تفعيل تنعيم الصورة عند التكبير للـ 4K
+    // تفعيل تنعيم الخوارزميات بدقة عالية
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
@@ -87,7 +121,6 @@ function renderImage() {
     const contrast = contrastInput.value;
     const saturate = saturationInput.value;
 
-    // تطبيق قيم طبيعية بدون تشويه
     ctx.filter = `
         brightness(${bright}%) 
         contrast(${contrast}%) 
@@ -95,6 +128,13 @@ function renderImage() {
     `;
 
     ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
+    ctx.filter = 'none';
+
+    // تطبيق خوارزمية الذكاء الاصطناعي لاستخراج التفاصيل الحادة
+    const sharpAmount = parseInt(sharpnessInput.value);
+    if (sharpAmount > 0) {
+        applyAIEnhancements(sharpAmount);
+    }
 }
 
 function renderVideo() {
@@ -118,29 +158,29 @@ function renderVideo() {
 
 qualitySelect.addEventListener('change', () => {
     updateCanvasDimensions();
-    if (currentFileType === 'image') renderImage();
+    if (currentFileType === 'image') renderImageWithAIEnhance();
 });
 
 [sharpnessInput, contrastInput, brightnessInput, saturationInput].forEach(input => {
     input.addEventListener('input', () => {
-        if (currentFileType === 'image') renderImage();
+        if (currentFileType === 'image') renderImageWithAIEnhance();
     });
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
-    qualitySelect.value = "1080";
-    sharpnessInput.value = 20;
-    contrastInput.value = 105;
-    brightnessInput.value = 100;
-    saturationInput.value = 105;
+    qualitySelect.value = "2160"; // 4K تلقائي
+    sharpnessInput.value = 35;
+    contrastInput.value = 108;
+    brightnessInput.value = 102;
+    saturationInput.value = 104;
     updateCanvasDimensions();
-    if (currentFileType === 'image') renderImage();
+    if (currentFileType === 'image') renderImageWithAIEnhance();
 });
 
 downloadBtn.addEventListener('click', () => {
     if (currentFileType === 'image') {
         const link = document.createElement('a');
-        link.download = `Enhanced_${qualitySelect.value}p.png`;
+        link.download = `AI_Enhanced_4K_${qualitySelect.value}p.png`;
         link.href = canvas.toDataURL('image/png', 1.0);
         link.click();
     } else {
